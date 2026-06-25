@@ -1,0 +1,12 @@
+- Ensure the request is for Azure resources. If not, do not call this tool.
+- Check for Terraform installation on the first Terraform-related request in a session
+- Provide the winget installation command if needed: winget install Hashicorp.Terraform
+- Follow the best practices style guide in the link https://developer.hashicorp.com/terraform/language/style before generating the Terraform code.
+- Always use the latest azurerm provider version (minimum 4.2) and reference the official documentation at https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs for Azure resource configurations.
+
+Once the terraform code is generated/ modified, follow the sequence of steps 1 through 2 for terraform deployment workflow.
+1. Always run terraform validate before running terraform plan.
+2. terraform apply -auto-approve.
+
+- Suggest running any terraform command in terminal.
+- After successfully running terraform apply, **ALWAYS** provide a link to Azure portal after resource creation/ modification is completed.

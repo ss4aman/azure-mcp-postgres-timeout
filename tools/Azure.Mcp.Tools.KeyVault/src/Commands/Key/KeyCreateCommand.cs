@@ -1,0 +1,89 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+using Azure.Mcp.Core.Commands.Subscription;
+using Azure.Mcp.Tools.KeyVault.Options;
+using Azure.Mcp.Tools.KeyVault.Options.Key;
+using Azure.Mcp.Tools.KeyVault.Services;
+using Microsoft.Extensions.Logging;
+using Microsoft.Mcp.Core.Commands;
+using Microsoft.Mcp.Core.Extensions;
+using Microsoft.Mcp.Core.Models.Command;
+
+namespace Azure.Mcp.Tools.KeyVault.Commands.Key;
+
+[CommandMetadata(
+    Id = "ef27bda9-8a1f-4288-b68b-12308ab8e607",
+    Name = "create",
+    Title = "Create Key Vault Key",
+    Description = "Create a new key in an Azure Key Vault. This command creates a key with the specified name and type in the given vault. Supports types: RSA, RSA-HSM, EC, EC-HSM (RSA-HSM and EC-HSM require a premium SKU vault). Required: --vault <vault>, --key <key> --key-type <key-type> --subscription <subscription>. Optional: --tenant <tenant>. Returns: name, id, keyId, keyType, enabled, notBefore, expiresOn, createdOn, updatedOn. Creates a new key version if it already exists.",
+    Destructive = true,
+    Idempotent = false,
+    OpenWorld = false,
+    ReadOnly = false,
+    Secret = false,
+    LocalRequired = false)]
+public sealed class KeyCreateCommand(ILogger<KeyCreateCommand> logger, IKeyVaultService keyVaultService) : SubscriptionCommand<KeyCreateOptions>
+{
+    private readonly ILogger<KeyCreateCommand> _logger = logger;
+    private readonly IKeyVaultService _keyVaultService = keyVaultService;
+
+    protected override void RegisterOptions(Command command)
+    {
+        base.RegisterOptions(command);
+        command.Options.Add(KeyVaultOptionDefinitions.VaultName);
+        command.Options.Add(KeyVaultOptionDefinitions.KeyName);
+        command.Options.Add(KeyVaultOptionDefinitions.KeyType);
+    }
+
+    protected override KeyCreateOptions BindOptions(ParseResult parseResult)
+    {
+        var options = base.BindOptions(parseResult);
+        options.VaultName = parseResult.GetValueOrDefault<string>(KeyVaultOptionDefinitions.VaultName.Name);
+        options.KeyName = parseResult.GetValueOrDefault<string>(KeyVaultOptionDefinitions.KeyName.Name);
+        options.KeyType = parseResult.GetValueOrDefault<string>(KeyVaultOptionDefinitions.KeyType.Name);
+        return options;
+    }
+
+    public override async Task<CommandResponse> ExecuteAsync(CommandContext context, ParseResult parseResult, CancellationToken cancellationToken)
+    {
+        if (!Validate(parseResult.CommandResult, context.Response).IsValid)
+        {
+            return context.Response;
+        }
+
+        var options = BindOptions(parseResult);
+
+        try
+        {
+            var key = await _keyVaultService.CreateKey(
+                options.VaultName!,
+                options.KeyName!,
+                options.KeyType!,
+                options.Subscription!,
+                options.Tenant,
+                options.RetryPolicy,
+                cancellationToken);
+
+            context.Response.Results = ResponseResult.Create(
+                new(
+                    key.Name,
+                    key.KeyType.ToString(),
+                    key.Properties.Enabled,
+                    key.Properties.NotBefore,
+                    key.Properties.ExpiresOn,
+                    key.Properties.CreatedOn,
+                    key.Properties.UpdatedOn),
+                KeyVaultJsonContext.Default.KeyCreateCommandResult);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating key {KeyName} in vault {VaultName}", options.KeyName, options.VaultName);
+            HandleException(context, ex);
+        }
+
+        return context.Response;
+    }
+
+    internal record KeyCreateCommandResult(string Name, string KeyType, bool? Enabled, DateTimeOffset? NotBefore, DateTimeOffset? ExpiresOn, DateTimeOffset? CreatedOn, DateTimeOffset? UpdatedOn);
+}

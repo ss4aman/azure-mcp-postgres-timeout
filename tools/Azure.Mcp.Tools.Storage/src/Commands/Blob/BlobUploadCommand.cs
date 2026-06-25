@@ -1,0 +1,64 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+using Azure.Mcp.Core.Commands.Subscription;
+using Azure.Mcp.Core.Services.Azure.Subscription;
+using Azure.Mcp.Tools.Storage.Models;
+using Azure.Mcp.Tools.Storage.Options.Blob;
+using Azure.Mcp.Tools.Storage.Services;
+using Microsoft.Extensions.Logging;
+using Microsoft.Mcp.Core.Commands;
+using Microsoft.Mcp.Core.Models.Command;
+
+namespace Azure.Mcp.Tools.Storage.Commands.Blob;
+
+[CommandMetadata(
+    Id = "aafb82ac-e35a-4800-b362-c642a3ac1e17",
+    Name = "upload",
+    Title = "Upload Local File to Blob",
+    Description = """
+        Uploads a local file to an Azure Storage blob, only if the blob does not exist, returning the last modified time,
+        ETag, and content hash of the uploaded blob.
+        """,
+    Destructive = false,
+    Idempotent = false,
+    OpenWorld = false,
+    ReadOnly = false,
+    Secret = false,
+    LocalRequired = true)]
+public sealed class BlobUploadCommand(ILogger<BlobUploadCommand> logger, IStorageService storageService, ISubscriptionResolver subscriptionResolver)
+    : SubscriptionCommand<BlobUploadOptions, BlobUploadResult>(subscriptionResolver)
+{
+    private readonly ILogger<BlobUploadCommand> _logger = logger;
+    private readonly IStorageService _storageService = storageService;
+
+    public override async Task<CommandResponse> ExecuteAsync(CommandContext context, BlobUploadOptions options, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _storageService.UploadBlob(
+                options.Account,
+                options.Container,
+                options.Blob,
+                options.LocalFilePath,
+                options.Subscription!,
+                options.Tenant,
+                options.RetryPolicy,
+                cancellationToken);
+
+            context.Response.Results = ResponseResult.Create(result, StorageJsonContext.Default.BlobUploadResult);
+
+            _logger.LogInformation("Successfully uploaded file {LocalFilePath} to blob {Blob} in container {Container}.",
+                options.LocalFilePath, options.Blob, options.Container);
+
+            return context.Response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error uploading file {LocalFilePath} to blob {Blob} in container {Container}.",
+                options.LocalFilePath, options.Blob, options.Container);
+            HandleException(context, ex);
+            return context.Response;
+        }
+    }
+}

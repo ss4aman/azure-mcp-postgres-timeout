@@ -1,0 +1,36 @@
+# Self-contained multi-stage build for the Azure MCP server with the
+# configurable Postgres command-timeout patch (AZURE_MCP_POSTGRES_COMMAND_TIMEOUT).
+#
+# Build (for Azure Container Apps, amd64):
+#   docker build -f Dockerfile.timeout --platform linux/amd64 \
+#     --build-arg RID=linux-musl-x64 -t azure-mcp-postgres-timeout:latest .
+
+ARG RID=linux-musl-x64
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+# Copy the whole repo so project-to-project references resolve.
+COPY . .
+
+ARG RID
+RUN dotnet publish servers/Azure.Mcp.Server/src/Azure.Mcp.Server.csproj \
+    -c Release \
+    -r ${RID} \
+    --self-contained true \
+    -p:PublishTrimmed=false \
+    -o /app/publish
+
+FROM mcr.microsoft.com/dotnet/runtime-deps:10.0-alpine AS runtime
+WORKDIR /mcp-server
+
+COPY --from=build /app/publish/ /mcp-server/
+
+# Ensure the executable exists and is runnable
+RUN test -f /mcp-server/azmcp && chmod +x /mcp-server/azmcp
+
+# Run as non-root for security hardening
+RUN adduser -D -s /sbin/nologin mcp && chown -R mcp:mcp /mcp-server
+USER mcp
+
+ENTRYPOINT ["./azmcp", "server", "start"]

@@ -1,0 +1,109 @@
+parameters:
+# required matrix parameters
+- name: TestTimeoutInMinutes
+  type: number
+- name: BuildTimeoutInMinutes
+  type: number
+- name: ServerName
+  type: string
+- name: PublishTarget
+  type: string
+- name: OSName
+  type: string
+- name: Matrix
+  type: string
+- name: MaxParallel
+  type: number
+- name: HostArchitecture
+  type: string
+  default: ''
+
+jobs:
+- job: Build_${{ parameters.OSName }}_${{ coalesce(parameters.HostArchitecture, 'x64') }}
+  displayName: "Build"
+  timeoutInMinutes: ${{ parameters.BuildTimeoutInMinutes }}
+  condition: and(succeeded(), ne(${{ parameters.Matrix }}, '{}'))
+  strategy:
+    maxParallel: ${{ parameters.MaxParallel }}
+    matrix: $[ ${{ parameters.Matrix }} ]
+  pool:
+    name: $(Pool)
+    ${{ if eq(parameters.OSName, 'macOS') }}:
+      vmImage: $(OSVmImage)
+    ${{ else }}:
+      image: $(OSVmImage)
+    os: ${{ parameters.OSName }}
+    ${{ if ne(parameters.HostArchitecture, '') }}:
+      hostArchitecture: ${{ parameters.HostArchitecture }}
+
+  # Only run codeql on linux internal build jobs to reduce overall time on pipeline
+  ${{ if and(eq(parameters.OSName, 'linux'), eq(variables['System.TeamProject'], 'internal')) }}:
+    templateContext:
+      sdl:
+        codeql:
+          querySuite: 'sdl-required, active-ssirp, secure-future-initiative'
+          compiled:
+            enabled: true
+
+  steps:
+  - download: current
+    artifact: build_info
+    displayName: 'Download build info artifact'
+
+  - checkout: self
+
+  - template: /eng/pipelines/templates/steps/install-dotnet.yml
+
+  - task: Powershell@2
+    displayName: "Build code"
+    condition: and(succeeded(), ne(variables['NoPackagesChanged'],'true'))
+    inputs:
+      pwsh: true
+      filePath: $(Build.SourcesDirectory)/eng/scripts/Build-Code.ps1
+      arguments: >
+        -BuildInfoPath '$(Pipeline.Workspace)/build_info/build_info.json'
+        -OutputPath '$(Build.ArtifactStagingDirectory)'
+        -ServerName '${{ parameters.ServerName }}'
+        -PlatformName '$(BuildPlatformName)'
+        -ReleaseBuild
+        -SelfContained
+        -SingleFile
+        -SmokeTest
+    env:
+      AZURE_MCP_COLLECT_TELEMETRY: 'false'
+
+  - task: Powershell@2
+    displayName: "Run tests"
+    condition: and(succeeded(), eq(variables['RunUnitTests'], 'true'))
+    timeoutInMinutes: ${{ parameters.TestTimeoutInMinutes }}
+    inputs:
+      pwsh: true
+      filePath:  $(Build.SourcesDirectory)/eng/scripts/Test-Code.ps1
+      arguments: >
+        -TestType 'All'
+        -CollectCoverage:$${{ eq(parameters.OSName, 'linux') }}
+        -TestResultsPath '$(Build.ArtifactStagingDirectory)/testResults'
+        -ScopingBuildInfoPath '$(Pipeline.Workspace)/build_info/build_info.json'
+      workingDirectory: $(Build.SourcesDirectory)
+    env:
+      AZURE_MCP_COLLECT_TELEMETRY: 'false'
+
+  - task: PublishTestResults@2
+    displayName: "Publish Results"
+    condition: and(succeededOrFailed(), eq(variables['RunUnitTests'], 'true'))
+    inputs:
+      testResultsFiles: "$(Build.ArtifactStagingDirectory)/testResults/*.trx"
+      testRunTitle: "unit_$(System.JobName)"
+      testResultsFormat: "VSTest"
+      mergeTestResults: true
+
+  - task: PublishCodeCoverageResults@2
+    displayName: "Publish Code Coverage Reports"
+    condition: and(succeededOrFailed(), eq(variables['RunUnitTests'], 'true'), eq(variables['PublishCoverage'], 'true'), eq('${{ parameters.OSName }}', 'linux'))
+    inputs:
+      summaryFileLocation: $(CoverageFile)
+
+  - template: /eng/common/pipelines/templates/steps/publish-1es-artifact.yml
+    parameters:
+      ArtifactPath: $(Build.ArtifactStagingDirectory)
+      ArtifactName: binaries_$(System.JobName)

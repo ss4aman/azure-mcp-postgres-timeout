@@ -1,0 +1,42 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+using Azure.Mcp.Tools.Communication.Commands.Email;
+using Azure.Mcp.Tools.Communication.Commands.Sms;
+using Azure.Mcp.Tools.Communication.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Mcp.Core.Areas;
+using Microsoft.Mcp.Core.Commands;
+
+namespace Azure.Mcp.Tools.Communication;
+
+public class CommunicationSetup : IAreaSetup
+{
+    public string Name => "communication";
+
+    public string Title => "Azure Communication Services";
+
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.AddSingleton<ICommunicationService, CommunicationService>();
+        services.AddSingleton<SmsSendCommand>();
+        services.AddSingleton<EmailSendCommand>();
+    }
+
+    public CommandGroup RegisterCommands(IServiceProvider serviceProvider)
+    {
+        // Create Communication command group
+        var communication = new CommandGroup(Name,
+            "Communication services operations - Commands for managing Azure Communication Services - supports sending SMS", Title);
+        // Create SMS subgroup
+        var sms = new CommandGroup("sms", "SMS messaging operations - sending SMS messages to one or more recipients using Azure Communication Services.");
+        communication.AddSubGroup(sms);
+        // Register SMS commands
+        sms.AddCommand<SmsSendCommand>(serviceProvider);
+
+        var email = new CommandGroup("email", "Email messaging operations - sending email messages to one or more recipients using Azure Communication Services.");
+        communication.AddSubGroup(email);
+        email.AddCommand<EmailSendCommand>(serviceProvider);
+        return communication;
+    }
+}

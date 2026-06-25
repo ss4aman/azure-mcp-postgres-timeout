@@ -1,0 +1,74 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+using Azure.Mcp.Core.Commands.Subscription;
+using Azure.Mcp.Tools.Search.Options.Service;
+using Azure.Mcp.Tools.Search.Services;
+using Microsoft.Extensions.Logging;
+using Microsoft.Mcp.Core.Commands;
+using Microsoft.Mcp.Core.Extensions;
+using Microsoft.Mcp.Core.Models.Command;
+using Microsoft.Mcp.Core.Models.Option;
+
+namespace Azure.Mcp.Tools.Search.Commands.Service;
+
+[CommandMetadata(
+    Id = "b0684f8c-20de-4bc0-bbc3-982575c8441f",
+    Name = "list",
+    Title = "List Azure AI Search (formerly known as \"Azure Cognitive Search\") Services",
+    Description = "List/show Azure AI Search services in a subscription, returning details about each service.",
+    Destructive = false,
+    Idempotent = true,
+    OpenWorld = false,
+    ReadOnly = true,
+    Secret = false,
+    LocalRequired = false)]
+public sealed class ServiceListCommand(ILogger<ServiceListCommand> logger, ISearchService searchService) : SubscriptionCommand<ServiceListOptions>()
+{
+    private readonly ILogger<ServiceListCommand> _logger = logger;
+    private readonly ISearchService _searchService = searchService;
+
+    protected override void RegisterOptions(Command command)
+    {
+        base.RegisterOptions(command);
+        command.Options.Add(OptionDefinitions.Common.ResourceGroup.AsOptional());
+    }
+
+    protected override ServiceListOptions BindOptions(ParseResult parseResult)
+    {
+        var options = base.BindOptions(parseResult);
+        options.ResourceGroup = parseResult.GetValueOrDefault<string>(OptionDefinitions.Common.ResourceGroup.Name);
+        return options;
+    }
+
+    public override async Task<CommandResponse> ExecuteAsync(CommandContext context, ParseResult parseResult, CancellationToken cancellationToken)
+    {
+        if (!Validate(parseResult.CommandResult, context.Response).IsValid)
+        {
+            return context.Response;
+        }
+
+        var options = BindOptions(parseResult);
+
+        try
+        {
+            var services = await _searchService.ListServices(
+                options.Subscription!,
+                options.ResourceGroup,
+                options.Tenant,
+                options.RetryPolicy,
+                cancellationToken);
+
+            context.Response.Results = ResponseResult.Create(new(services ?? []), SearchJsonContext.Default.ServiceListCommandResult);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error listing search services");
+            HandleException(context, ex);
+        }
+
+        return context.Response;
+    }
+
+    internal sealed record ServiceListCommandResult(List<string> Services);
+}

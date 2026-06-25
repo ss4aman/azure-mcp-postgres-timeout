@@ -1,0 +1,117 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+using System.Net;
+using System.Text.Json.Serialization;
+using Azure.Mcp.Tools.StorageSync.Models;
+using Azure.Mcp.Tools.StorageSync.Options;
+using Azure.Mcp.Tools.StorageSync.Services;
+using Microsoft.Extensions.Logging;
+using Microsoft.Mcp.Core.Commands;
+using Microsoft.Mcp.Core.Extensions;
+using Microsoft.Mcp.Core.Models.Command;
+using Microsoft.Mcp.Core.Models.Option;
+
+namespace Azure.Mcp.Tools.StorageSync.Commands.ServerEndpoint;
+
+[CommandMetadata(
+    Id = "cf197b94-6aa6-403b-8679-3a1ce5440ca3",
+    Name = "get",
+    Title = "Get Server Endpoint",
+    Description = "List all server endpoints in a sync group or retrieve details about a specific server endpoint. Returns server endpoint properties including local path, cloud tiering status, sync health, and provisioning state. Use --name for a specific endpoint.",
+    Destructive = false,
+    Idempotent = true,
+    OpenWorld = false,
+    ReadOnly = true,
+    Secret = false,
+    LocalRequired = false)]
+public sealed class ServerEndpointGetCommand(ILogger<ServerEndpointGetCommand> logger, IStorageSyncService service) : BaseStorageSyncCommand<ServerEndpointGetOptions>
+{
+    private readonly IStorageSyncService _service = service;
+    private readonly ILogger<ServerEndpointGetCommand> _logger = logger;
+
+    protected override void RegisterOptions(Command command)
+    {
+        base.RegisterOptions(command);
+        command.Options.Add(OptionDefinitions.Common.ResourceGroup.AsRequired());
+        command.Options.Add(StorageSyncOptionDefinitions.StorageSyncService.Name.AsRequired());
+        command.Options.Add(StorageSyncOptionDefinitions.SyncGroup.Name.AsRequired());
+        command.Options.Add(StorageSyncOptionDefinitions.ServerEndpoint.Name.AsOptional());
+    }
+
+    protected override ServerEndpointGetOptions BindOptions(ParseResult parseResult)
+    {
+        var options = base.BindOptions(parseResult);
+        options.ResourceGroup ??= parseResult.GetValueOrDefault<string>(OptionDefinitions.Common.ResourceGroup.Name);
+        options.StorageSyncServiceName = parseResult.GetValueOrDefault<string>(StorageSyncOptionDefinitions.StorageSyncService.Name.Name);
+        options.SyncGroupName = parseResult.GetValueOrDefault<string>(StorageSyncOptionDefinitions.SyncGroup.Name.Name);
+        options.ServerEndpointName = parseResult.GetValueOrDefault<string>(StorageSyncOptionDefinitions.ServerEndpoint.Name.Name);
+        return options;
+    }
+
+    public override async Task<CommandResponse> ExecuteAsync(CommandContext context, ParseResult parseResult, CancellationToken cancellationToken)
+    {
+        if (!Validate(parseResult.CommandResult, context.Response).IsValid)
+        {
+            return context.Response;
+        }
+
+        var options = BindOptions(parseResult);
+
+        try
+        {
+            // If server endpoint name is provided, get specific endpoint
+            if (!string.IsNullOrEmpty(options.ServerEndpointName))
+            {
+                _logger.LogInformation("Getting server endpoint. Subscription: {Subscription}, ResourceGroup: {ResourceGroup}, ServiceName: {ServiceName}, GroupName: {GroupName}, EndpointName: {EndpointName}",
+                    options.Subscription, options.ResourceGroup, options.StorageSyncServiceName, options.SyncGroupName, options.ServerEndpointName);
+
+                var endpoint = await _service.GetServerEndpointAsync(
+                    options.Subscription!,
+                    options.ResourceGroup!,
+                    options.StorageSyncServiceName!,
+                    options.SyncGroupName!,
+                    options.ServerEndpointName!,
+                    options.Tenant,
+                    options.RetryPolicy,
+                    cancellationToken);
+
+                if (endpoint == null)
+                {
+                    context.Response.Status = HttpStatusCode.NotFound;
+                    context.Response.Message = "Server endpoint not found";
+                    return context.Response;
+                }
+
+                context.Response.Results = ResponseResult.Create(new([endpoint]), StorageSyncJsonContext.Default.ServerEndpointGetCommandResult);
+            }
+            else
+            {
+                // List all server endpoints
+                _logger.LogInformation("Listing server endpoints. Subscription: {Subscription}, ResourceGroup: {ResourceGroup}, ServiceName: {ServiceName}, GroupName: {GroupName}",
+                    options.Subscription, options.ResourceGroup, options.StorageSyncServiceName, options.SyncGroupName);
+
+                var endpoints = await _service.ListServerEndpointsAsync(
+                    options.Subscription!,
+                    options.ResourceGroup!,
+                    options.StorageSyncServiceName!,
+                    options.SyncGroupName!,
+                    options.Tenant,
+                    options.RetryPolicy,
+                    cancellationToken);
+
+                context.Response.Results = ResponseResult.Create(new(endpoints ?? []), StorageSyncJsonContext.Default.ServerEndpointGetCommandResult);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting server endpoint(s)");
+            HandleException(context, ex);
+        }
+
+        return context.Response;
+    }
+
+    [JsonSerializable(typeof(ServerEndpointGetCommandResult))]
+    internal record ServerEndpointGetCommandResult(List<ServerEndpointDataSchema> Results);
+}

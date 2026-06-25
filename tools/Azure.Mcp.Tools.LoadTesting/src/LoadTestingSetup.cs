@@ -1,0 +1,73 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+
+using Azure.Mcp.Tools.LoadTesting.Commands.LoadTest;
+using Azure.Mcp.Tools.LoadTesting.Commands.LoadTestResource;
+using Azure.Mcp.Tools.LoadTesting.Commands.LoadTestRun;
+using Azure.Mcp.Tools.LoadTesting.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Mcp.Core.Areas;
+using Microsoft.Mcp.Core.Commands;
+
+namespace Azure.Mcp.Tools.LoadTesting;
+
+public class LoadTestingSetup : IAreaSetup
+{
+    public string Name => "loadtesting";
+
+    public string Title => "Azure Load Testing";
+
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.AddSingleton<ILoadTestingService, LoadTestingService>();
+
+        services.AddSingleton<TestResourceListCommand>();
+        services.AddSingleton<TestResourceCreateCommand>();
+
+        services.AddSingleton<TestGetCommand>();
+        services.AddSingleton<TestCreateCommand>();
+
+        services.AddSingleton<TestRunGetCommand>();
+        services.AddSingleton<TestRunCreateOrUpdateCommand>();
+    }
+
+    public CommandGroup RegisterCommands(IServiceProvider serviceProvider)
+    {
+        // Create Load Testing command group
+        var service = new CommandGroup(
+            Name,
+            "Load Testing operations - Commands for managing Azure Load Testing resources, test configurations, and test runs. Includes operations for creating and managing load test resources, configuring test scripts, executing performance tests, and monitoring test results.",
+            Title);
+
+        // Create Load Test subgroups
+        var testResource = new CommandGroup(
+            "testresource",
+            "Load test resource operations - Commands for listing, creating and managing Azure load test resources.");
+        service.AddSubGroup(testResource);
+
+        var test = new CommandGroup(
+            "test",
+            "Load test operations - Commands for listing, creating and managing Azure load tests.");
+        service.AddSubGroup(test);
+
+        var testRun = new CommandGroup(
+            "testrun",
+            "Load test run operations - Commands for listing, creating and managing Azure load test runs.");
+        service.AddSubGroup(testRun);
+
+        // Register commands for Load Test Resource
+        testResource.AddCommand<TestResourceListCommand>(serviceProvider);
+        testResource.AddCommand<TestResourceCreateCommand>(serviceProvider);
+
+        // Register commands for Load Test
+        test.AddCommand<TestGetCommand>(serviceProvider);
+        test.AddCommand<TestCreateCommand>(serviceProvider);
+
+        // Register commands for Load Test Run
+        testRun.AddCommand<TestRunGetCommand>(serviceProvider);
+        testRun.AddCommand<TestRunCreateOrUpdateCommand>(serviceProvider);
+
+        return service;
+    }
+}

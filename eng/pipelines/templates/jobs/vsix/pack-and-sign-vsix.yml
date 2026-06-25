@@ -1,0 +1,56 @@
+parameters:
+- name: DependsOn
+  type: object
+
+jobs:
+- job: SignAndPackVSIX
+  displayName: "Sign and Pack VSIX"
+  dependsOn: ${{ parameters.DependsOn }}
+  condition: and(succeeded(), ne(variables['NoPackagesChanged'], 'true'))
+  steps:
+  - checkout: self
+
+  # Download the signed MCP server binaries for this OS
+  - download: current
+    artifact: build_info
+    displayName: "Download build_info"
+
+  - download: current
+    artifact: binaries_signed
+    displayName: "Download binaries_signed"
+
+  - task: UseNode@1
+    displayName: 'Install Node.js 24'
+    inputs:
+      version: '24.x'
+
+  - template: /eng/common/pipelines/templates/steps/create-authenticated-npmrc.yml
+
+  # --- VS Code Extension Packaging Steps ---
+  - task: Powershell@2
+    displayName: "Pack binaries for VSIX"
+    inputs:
+      pwsh: true
+      filePath: $(Build.SourcesDirectory)/eng/scripts/Pack-Vsix.ps1
+      arguments: >
+        -BuildInfoPath '$(Pipeline.Workspace)/build_info/build_info.json'
+        -ArtifactsPath '$(Pipeline.Workspace)/binaries_signed'
+        -OutputPath '$(Build.ArtifactStagingDirectory)'
+
+  - template: pipelines/steps/azd-vscode-signing.yml@azure-sdk-build-tools
+    parameters:
+      Path: $(Build.ArtifactStagingDirectory)
+      Pattern: '**/*.signature.p7s'
+
+  - task: Powershell@2
+    displayName: "Verify VSIX Signing"
+    inputs:
+      pwsh: true
+      filePath: $(Build.SourcesDirectory)/eng/scripts/Verify-VsixSignatures.ps1
+      arguments: >
+        -ArtifactsPath '$(Build.ArtifactStagingDirectory)'
+
+  - template: /eng/common/pipelines/templates/steps/publish-1es-artifact.yml
+    parameters:
+      ArtifactPath: $(Build.ArtifactStagingDirectory)
+      ArtifactName: packages_vsix_signed
