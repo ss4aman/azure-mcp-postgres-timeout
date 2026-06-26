@@ -16,5 +16,5 @@ public static class PostgresOptionDefinitions
     internal const string ParamDescription = "The PostgreSQL parameter to be accessed.";
     internal const string CommandTimeoutDescription = "Optional. The maximum time, in seconds, to wait for the SQL command to execute before timing out. " +
         "Use a higher value for long-running queries such as exact count(*) over large tables. " +
-        "Set to 0 to wait indefinitely. When omitted, the AZURE_MCP_POSTGRES_COMMAND_TIMEOUT environment variable or the default of 30 seconds is used.";
+        "Set to 0 to wait indefinitely. When omitted, the AZURE_MCP_POSTGRES_COMMAND_TIMEOUT environment variable or the default of 300 seconds (5 minutes) is used.";
 }

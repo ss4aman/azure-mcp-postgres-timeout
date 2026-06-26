@@ -20,18 +20,18 @@ internal class DbProvider : IDbProvider
         // Resolve the per-command timeout (in seconds) with the following precedence:
         //   1. The explicit per-call value (e.g. supplied by the agent as 'command-timeout').
         //   2. The AZURE_MCP_POSTGRES_COMMAND_TIMEOUT environment variable (server-wide default).
-        //   3. Npgsql's built-in default (30 seconds) when neither is set.
+        //   3. A default of 300 seconds (5 minutes) when neither is set.
         // A value of 0 disables the timeout (waits indefinitely), which lets long-running
         // queries (e.g. exact count(*) over large tables) avoid "Exception while reading
         // from stream" timeouts.
+        const int DefaultCommandTimeoutSeconds = 300;
         int? resolvedTimeout = commandTimeoutSeconds;
         if (resolvedTimeout is null)
         {
             var timeoutValue = Environment.GetEnvironmentVariable("AZURE_MCP_POSTGRES_COMMAND_TIMEOUT");
-            if (int.TryParse(timeoutValue, out var envTimeout))
-            {
-                resolvedTimeout = envTimeout;
-            }
+            resolvedTimeout = int.TryParse(timeoutValue, out var envTimeout)
+                ? envTimeout
+                : DefaultCommandTimeoutSeconds;
         }
 
         if (resolvedTimeout is int timeout && timeout >= 0)
