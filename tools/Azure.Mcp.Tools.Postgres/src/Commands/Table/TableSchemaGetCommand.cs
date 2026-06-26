@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+using Azure.Mcp.Tools.Postgres.Options;
 using Azure.Mcp.Tools.Postgres.Options.Table;
 using Azure.Mcp.Tools.Postgres.Services;
 using Microsoft.Extensions.Logging;
@@ -32,7 +33,7 @@ public sealed class TableSchemaGetCommand(IPostgresService postgresService, ILog
         {
 
             List<string> schema = await _postgresService.GetTableSchemaAsync(
-                options.AuthType,
+                options.AuthType ?? AuthTypes.MicrosoftEntra,
                 options.User,
                 options.Password,
                 options.Server,

@@ -11,7 +11,7 @@ public sealed class DatabaseQueryOptions
     public required string Query { get; set; }
 
     [Option(Description = PostgresOptionDefinitions.AuthTypeDescription)]
-    public required string AuthType { get; set; }
+    public string? AuthType { get; set; }
 
     [Option(Description = PostgresOptionDefinitions.UserDescription)]
     public required string User { get; set; }

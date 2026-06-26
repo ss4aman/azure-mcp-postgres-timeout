@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+using Azure.Mcp.Tools.Postgres.Options;
 using Azure.Mcp.Tools.Postgres.Options.Database;
 using Azure.Mcp.Tools.Postgres.Services;
 using Azure.Mcp.Tools.Postgres.Validation;
@@ -34,7 +35,7 @@ public sealed class DatabaseQueryCommand(IPostgresService postgresService, ILogg
             // Validate the query early to avoid sending unsafe SQL to the server.
             SqlQueryValidator.EnsureReadOnlySelect(options.Query);
             List<string> queryResult = await _postgresService.ExecuteQueryAsync(
-                options.AuthType,
+                options.AuthType ?? AuthTypes.MicrosoftEntra,
                 options.User,
                 options.Password,
                 options.Server,
