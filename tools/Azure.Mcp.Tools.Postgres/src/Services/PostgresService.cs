@@ -366,7 +366,15 @@ public class PostgresService(
             Database = database,
             Username = user,
             Password = password,
-            SslMode = SslMode.Require
+            SslMode = SslMode.Require,
+            // Keep the socket active during long-running queries. While a single command
+            // runs, no application data flows over the TCP connection, so an intermediary
+            // (Azure Load Balancer / NAT gateway, ~4 min idle timeout) can silently drop it,
+            // which Npgsql surfaces as "Exception while reading from stream". The application-
+            // level keepalive makes Npgsql send a no-op query every 30 idle seconds, which
+            // keeps the connection alive across the load balancer regardless of OS platform.
+            KeepAlive = 30,
+            TcpKeepAlive = true
         };
         return builder.ConnectionString;
     }
